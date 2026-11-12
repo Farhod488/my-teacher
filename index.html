@@ -1,0 +1,326 @@
+<!DOCTYPE html>
+<html lang="uz">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Evil English Tutor AI</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Tabriklash effekti uchun confetti -->
+  <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
+</head>
+<body class="bg-slate-900 text-white flex flex-col h-screen font-sans">
+
+  <!-- 1. RO'YXATDAN O'TISH OYNASI (Faqat birinchi marta chiqadi) -->
+  <div id="auth-screen" class="fixed inset-0 bg-slate-900 z-50 flex items-center justify-center p-4">
+    <div class="bg-slate-800 p-6 rounded-2xl w-full max-w-md border border-slate-700 shadow-2xl">
+      <div class="text-center mb-6">
+        <span class="text-5xl" id="auth-avatar-preview">🪳</span>
+        <h2 class="text-2xl font-black mt-2 text-indigo-400">AI Ingliz Tili Repetitor</h2>
+        <p class="text-xs text-gray-400">O'zingizga qattiqqol ustoz yarating!</p>
+      </div>
+
+      <div class="space-y-3">
+        <div>
+          <label class="text-xs text-gray-400">Ismingiz</label>
+          <input type="text" id="reg-name" placeholder="Masalan: Ali" class="w-full p-2.5 bg-slate-700 rounded-lg text-sm outline-none focus:ring-2 focus:ring-indigo-500">
+        </div>
+        <div>
+          <label class="text-xs text-gray-400">Familiyangiz</label>
+          <input type="text" id="reg-surname" placeholder="Masalan: Valiyev" class="w-full p-2.5 bg-slate-700 rounded-lg text-sm outline-none focus:ring-2 focus:ring-indigo-500">
+        </div>
+        <div>
+          <label class="text-xs text-gray-400">Foydalanuvchi logini</label>
+          <input type="text" id="reg-username" placeholder="ali_01" class="w-full p-2.5 bg-slate-700 rounded-lg text-sm outline-none focus:ring-2 focus:ring-indigo-500">
+        </div>
+        <div>
+          <label class="text-xs text-gray-400">Google Gemini API Kalitingiz</label>
+          <input type="password" id="reg-key" placeholder="AIzaSy..." class="w-full p-2.5 bg-slate-700 rounded-lg text-sm outline-none focus:ring-2 focus:ring-indigo-500">
+        </div>
+        
+        <div>
+          <label class="text-xs text-gray-400 block mb-1">Ustoz qiyofasi (Avatar):</label>
+          <div class="grid grid-cols-3 gap-2">
+            <button type="button" onclick="selectAvatar('🪳', 'Jizzaki Tarakan')" class="avatar-opt p-2 rounded-lg bg-slate-700 border border-indigo-500 text-center text-xl">🪳<div class="text-[10px]">Tarakan</div></button>
+            <button type="button" onclick="selectAvatar('🍅', 'Asabiy Pomidor')" class="avatar-opt p-2 rounded-lg bg-slate-700 text-center text-xl">🍅<div class="text-[10px]">Pomidor</div></button>
+            <button type="button" onclick="selectAvatar('🥟', 'Dovyurak Somsa')" class="avatar-opt p-2 rounded-lg bg-slate-700 text-center text-xl">🥟<div class="text-[10px]">Somsa</div></button>
+          </div>
+        </div>
+
+        <div>
+          <label class="text-xs text-gray-400 block mb-1">AI Kayfiyati (Xarakteri):</label>
+          <select id="reg-mood" class="w-full p-2.5 bg-slate-700 rounded-lg text-sm outline-none focus:ring-2 focus:ring-indigo-500">
+            <option value="all">🔥 Barchasi bittada (Xazil + Ustidan kulish + So'kish + Qattiqqol)</option>
+            <option value="toxic">😈 Qattiqqol & Ustidan kuluvchi (Kamsitadi, roast qiladi)</option>
+            <option value="funny">😂 Hazilkash (Faqat prikol qiladi)</option>
+            <option value="strict">👨‍🏫 Qat'iy & Jiddiy ustoz</option>
+          </select>
+        </div>
+
+        <button onclick="registerUser()" class="w-full bg-indigo-600 hover:bg-indigo-700 font-bold p-3 rounded-lg text-sm mt-4">
+          Boshlash 🚀
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 2. ASOSIY DASTUR INTERFEYSI -->
+  <header class="bg-slate-800 p-3 border-b border-slate-700 flex justify-between items-center shadow-lg">
+    <div class="flex items-center space-x-3">
+      <div id="ui-avatar" class="text-3xl bg-slate-700 p-1.5 rounded-full border border-indigo-400">🪳</div>
+      <div>
+        <h1 id="ui-name" class="font-bold text-sm text-indigo-300">Ali (Beginner)</h1>
+        <div class="flex items-center space-x-2 mt-0.5">
+          <div class="w-24 bg-slate-700 rounded-full h-2">
+            <div id="ui-xp-bar" class="bg-indigo-500 h-2 rounded-full" style="width: 10%"></div>
+          </div>
+          <span id="ui-xp-text" class="text-[10px] text-gray-400">0/100 XP</span>
+        </div>
+      </div>
+    </div>
+    
+    <div class="flex items-center space-x-2">
+      <span id="ui-badge" class="bg-indigo-900 border border-indigo-500 text-indigo-300 text-[10px] px-2 py-1 rounded-full font-bold">A1 Beginner</span>
+      <button onclick="changeMoodPrompt()" title="Kayfiyatni o'zgartirish" class="bg-slate-700 p-1.5 rounded-lg text-xs">🎭</button>
+    </div>
+  </header>
+
+  <!-- Chat qismi -->
+  <main id="chat-box" class="flex-1 overflow-y-auto p-4 space-y-3">
+    <!-- Xabarlar dinamik qo'shiladi -->
+  </main>
+
+  <!-- Yozish paneli -->
+  <footer class="p-3 bg-slate-800 border-t border-slate-700 flex items-center space-x-2">
+    <input 
+      type="text" 
+      id="user-input" 
+      placeholder="Inglizcha yozing... (Xato qilsangiz so'kadi 😅)" 
+      class="flex-1 p-3 bg-slate-700 text-white rounded-xl outline-none focus:ring-2 focus:ring-indigo-500 text-sm"
+      onkeypress="if(event.key === 'Enter') sendMessage()"
+    />
+    <button onclick="sendMessage()" class="bg-indigo-600 hover:bg-indigo-700 text-white p-3 rounded-xl font-bold">
+      ➤
+    </button>
+  </footer>
+
+  <script>
+    // Holat (State)
+    let user = JSON.parse(localStorage.getItem('english_user') || 'null');
+    let selectedAvatarIcon = '🪳';
+    let selectedAvatarName = 'Jizzaki Tarakan';
+
+    const levels = [
+      { name: "A1 Beginner", minXp: 0, maxXp: 100 },
+      { name: "A2 Elementary", minXp: 100, maxXp: 250 },
+      { name: "B1 Pre-Intermediate", minXp: 250, maxXp: 450 },
+      { name: "B2 Intermediate", minXp: 450, maxXp: 700 },
+      { name: "C1 Advanced (Erkin)", minXp: 700, maxXp: 1000 }
+    ];
+
+    let chatHistory = [];
+
+    window.onload = () => {
+      if (!user) {
+        document.getElementById('auth-screen').classList.remove('hidden');
+      } else {
+        document.getElementById('auth-screen').classList.add('hidden');
+        initApp();
+      }
+    };
+
+    function selectAvatar(icon, name) {
+      selectedAvatarIcon = icon;
+      selectedAvatarName = name;
+      document.getElementById('auth-avatar-preview').innerText = icon;
+      document.querySelectorAll('.avatar-opt').forEach(btn => {
+        btn.classList.remove('border-indigo-500');
+        if (btn.innerText.includes(icon)) btn.classList.add('border-indigo-500');
+      });
+    }
+
+    function registerUser() {
+      const name = document.getElementById('reg-name').value.trim();
+      const surname = document.getElementById('reg-surname').value.trim();
+      const username = document.getElementById('reg-username').value.trim();
+      const key = document.getElementById('reg-key').value.trim();
+      const mood = document.getElementById('reg-mood').value;
+
+      if (!name || !username || !key) {
+        alert("Iltimos, ism, login va Google AI kalitni kiriting!");
+        return;
+      }
+
+      user = {
+        name, surname, username, apiKey: key,
+        avatar: selectedAvatarIcon,
+        avatarName: selectedAvatarName,
+        mood: mood,
+        xp: 0,
+        levelIdx: 0
+      };
+
+      localStorage.setItem('english_user', JSON.stringify(user));
+      document.getElementById('auth-screen').classList.add('hidden');
+      initApp();
+    }
+
+    function initApp() {
+      document.getElementById('ui-avatar').innerText = user.avatar;
+      updateUI();
+
+      // Dastlabki salomlashish
+      const greeting = `Hoy ${user.name}! Men ${user.avatar} (${user.avatarName})man. Ingliz tilini noldan o'rganmoqchimisan? Menga biror narsa deb yoz-chi. Qani ko'raylik, dining bormi o'zi inglizchada! Xato qilsang asabimni buzma, ustingdan kulib sharmanda qilaman! 😂`;
+      appendMessage('ai', greeting);
+    }
+
+    function updateUI() {
+      const curLvl = levels[user.levelIdx];
+      document.getElementById('ui-name').innerText = `${user.name} (${user.username})`;
+      document.getElementById('ui-badge').innerText = curLvl.name;
+
+      const progress = Math.min(100, Math.max(0, ((user.xp - curLvl.minXp) / (curLvl.maxXp - curLvl.minXp)) * 100));
+      document.getElementById('ui-xp-bar').style.width = `${progress}%`;
+      document.getElementById('ui-xp-text').innerText = `${user.xp}/${curLvl.maxXp} XP`;
+    }
+
+    // Google Gemini API orqali javob olish
+    async function sendMessage() {
+      const input = document.getElementById('user-input');
+      const text = input.value.trim();
+      if (!text) return;
+
+      appendMessage('user', text);
+      input.value = '';
+
+      const loadingId = appendLoading();
+
+      const curLvl = levels[user.levelIdx].name;
+
+      const systemPrompt = `
+Siz o'quvchiga ingliz tilini o'rgatuvchi AI tutorsiz. 
+Sizning qiyofangiz: ${user.avatar} (${user.avatarName}).
+Foydalanuvchi darajasi: ${curLvl}.
+Sizning xarakteringiz/kayfiyatingiz: ${user.mood} (qattiqqol, hazilkash, xato qilsa Duolingo va GoPrep kabi kesatuvchi, ustidan kuluvchi, kinoya qiluvchi, biroq me'yorni bilgan holda haqiqiy repetitordek o'rgatuvchi).
+
+Qoidalar:
+1. Foydalanuvchi inglizcha yozadi. Agar uning gapida xato bo'lsa:
+   - Avval uning xatosi ustidan biroz kulib, kinoya qiling ("Ey xudo, bu qanaqa inglizcha?!", "Somsa ham sendan yaxshiroq gapiradi" qabilida).
+   - Keyin o'zbek tilida qat'iy va tushunarli qilib xatosini tushuntiring va to'g'rilab bering.
+2. Agar gap to'g'ri bo'lsa:
+   - Kutilmaganda maqtang yoki "Nihoyat bitta gapni to'g'ri yozding" deb tan oling.
+3. Keyin unga oddiy darajadagi yangi inglizcha gap/savol bering (suhbat davom etsin).
+4. Xabaringiz oxirida albatta foydalanuvchiga ball berish uchun quyidagi teglardan birini qo'shing: 
+   - Gap to'g'ri bo'lsa: [XP:+15]
+   - Gapda xato bo'lsa, lekin harakat qilgan bo'lsa: [XP:+5]
+`;
+
+      try {
+        const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${user.apiKey}`;
+        
+        chatHistory.push({ role: "user", parts: [{ text: text }] });
+
+        const response = await fetch(url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            contents: chatHistory,
+            systemInstruction: { parts: [{ text: systemPrompt }] }
+          })
+        });
+
+        const data = await response.json();
+        removeLoading(loadingId);
+
+        if (data.candidates && data.candidates[0].content) {
+          let aiReply = data.candidates[0].content.parts[0].text;
+          
+          // XP ni aniqlash
+          let gainedXp = 5;
+          if (aiReply.includes('[XP:+15]')) gainedXp = 15;
+          else if (aiReply.includes('[XP:+5]')) gainedXp = 5;
+          
+          aiReply = aiReply.replace(/\[XP:\+\d+\]/g, '').trim();
+
+          chatHistory.push({ role: "model", parts: [{ text: aiReply }] });
+          appendMessage('ai', aiReply);
+          addXp(gainedXp);
+        } else {
+          appendMessage('ai', "Kallang ishlamayaptimi yoki API kaliting noto'g'rimi? Qayta tekshir! 🤬");
+        }
+      } catch (err) {
+        removeLoading(loadingId);
+        appendMessage('ai', "Internetda yoki API da xatolik! Birozdan keyin urinib ko'r.");
+      }
+    }
+
+    function addXp(pts) {
+      user.xp += pts;
+      const curLvl = levels[user.levelIdx];
+      
+      // Daraja ko'tarilishi
+      if (user.xp >= curLvl.maxXp && user.levelIdx < levels.length - 1) {
+        user.levelIdx++;
+        showCelebration(levels[user.levelIdx].name);
+      }
+      localStorage.setItem('english_user', JSON.stringify(user));
+      updateUI();
+    }
+
+    function showCelebration(newLevelName) {
+      confetti({ particleCount: 150, spread: 80, origin: { y: 0.6 } });
+      alert(`🎉 VOY BO'OO'Y! TABRIKLAYMAN!\n\nSen yangi darajaga chiqding: ${newLevelName}!\n${user.avatar}: "O'rganib qolyapsanmi deyman, davom et!" 👏`);
+    }
+
+    function appendMessage(sender, text) {
+      const isUser = sender === 'user';
+      const msgDiv = document.createElement('div');
+      msgDiv.className = `flex ${isUser ? 'justify-end' : 'justify-start'}`;
+      
+      msgDiv.innerHTML = `
+        <div class="${isUser ? 'bg-indigo-600 text-white rounded-br-none' : 'bg-slate-800 text-gray-100 rounded-tl-none border border-slate-700'} p-3 rounded-2xl shadow max-w-[85%] text-sm">
+          <div class="font-bold text-[10px] text-indigo-300 mb-1">${isUser ? user.name : user.avatar + ' ' + user.avatarName}</div>
+          <p class="whitespace-pre-line">${text}</p>
+          ${!isUser ? `<button onclick="speakText(\`${text.replace(/[`"'\\]/g, '')}\`)" class="mt-2 text-[11px] text-indigo-400 bg-slate-700 px-2 py-1 rounded flex items-center gap-1 font-semibold">🔊 Eshitish</button>` : ''}
+        </div>
+      `;
+      chatBox.appendChild(msgDiv);
+      chatBox.scrollTop = chatBox.scrollHeight;
+    }
+
+    function appendLoading() {
+      const id = 'loading-' + Date.now();
+      const div = document.createElement('div');
+      div.id = id;
+      div.className = "flex justify-start";
+      div.innerHTML = `<div class="bg-slate-800 border border-slate-700 text-gray-400 text-xs p-3 rounded-2xl rounded-tl-none animate-pulse">${user.avatar} xatoyingizni tekshirib, kinoyali gap o'ylamoqda...</div>`;
+      chatBox.appendChild(div);
+      chatBox.scrollTop = chatBox.scrollHeight;
+      return id;
+    }
+
+    function removeLoading(id) {
+      const el = document.getElementById(id);
+      if (el) el.remove();
+    }
+
+    function speakText(text) {
+      if ('speechSynthesis' in window) {
+        window.speechSynthesis.cancel();
+        const utterance = new SpeechSynthesisUtterance(text);
+        utterance.lang = 'en-US';
+        utterance.rate = 0.85;
+        window.speechSynthesis.speak(utterance);
+      }
+    }
+
+    function changeMoodPrompt() {
+      const newMood = prompt("AI xarakterini tanlang:\n1: all (Barchasi bittada)\n2: toxic (Qattiqqol)\n3: funny (Hazilkash)", user.mood);
+      if (newMood) {
+        user.mood = newMood;
+        localStorage.setItem('english_user', JSON.stringify(user));
+        alert("Kayfiyat yangilandi!");
+      }
+    }
+  </script>
+</body>
+</html>
