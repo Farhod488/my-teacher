@@ -83,7 +83,10 @@ const AVATARS = [
   {i:'🥟', n:'Dovyurak Somsa', body:'<path d="M100 22 C150 40 178 110 170 150 Q100 185 30 150 C22 110 50 40 100 22Z" fill="#e0a458"/>'}
 ];
 const LEVELS = ['A1 Beginner','A2 Elementary','B1 Intermediate','B2 Upper-Intermediate'];
-const MODELS = ['gemini-3.8-flash','gemini-3.8-flash','gemini-flash-latest','gemini-flash-latest'];
+const ATTEMPTS = [
+  {m:'gemini-3.8-flash', t:'low'}, {m:'gemini-3.8-flash', t:null},
+  {m:'gemini-flash-latest', t:'low'}, {m:'gemini-flash-latest', t:null}
+];
 const MOODS = {neutral:[0,0,24], happy:[-10,10,32], mock:[-18,4,32], angry:[22,-22,14]};
 
 let S = Object.assign({name:'', key:'', xp:0, streak:0, last:'', av:0}, JSON.parse(localStorage.getItem('speakup2')||'{}'));
@@ -182,38 +185,37 @@ If the student writes START, greet them by name and ask the first easy question 
 }
 
 async function callGemini(){
-  const body = JSON.stringify({
+  const make = t => JSON.stringify({
     system_instruction:{parts:[{text:system()}]},
     contents: history.slice(-20).map(m=>({role:m.role, parts:[{text:m.text}]})),
     generationConfig:{
       temperature:0.8, responseMimeType:'application/json',
+      ...(t ? {thinkingConfig:{thinkingLevel:t}} : {}),
       responseSchema:{type:'OBJECT', properties:{
         english:{type:'STRING'}, correction:{type:'STRING'}, explain_uz:{type:'STRING'},
         tease:{type:'STRING'}, correct:{type:'BOOLEAN'}, mood:{type:'STRING'}},
         required:['english','correction','explain_uz','tease','correct','mood']}
     }
   });
+  const url = m => `https://generativelanguage.googleapis.com/v1beta/models/${m}:generateContent?key=${encodeURIComponent(S.key)}`;
   let last;
-  for(let i=0;i<MODELS.length;i++){
-    say(`Oʻylayapman… (${i+1}/${MODELS.length})`);
-    const ctl = new AbortController(), t = setTimeout(()=>ctl.abort(), 30000);
+  for(let i=0;i<ATTEMPTS.length;i++){
+    const {m,t} = ATTEMPTS[i], t0 = Date.now();
+    const tick = setInterval(()=>say(`Oʻylayapman… (${i+1}/${ATTEMPTS.length}) ${Math.round((Date.now()-t0)/1000)}s`), 1000);
+    const ctl = new AbortController(), to = setTimeout(()=>ctl.abort(), t ? 25000 : 45000);
     try{
-      const url = `https://generativelanguage.googleapis.com/v1beta/models/${MODELS[i]}:generateContent?key=${encodeURIComponent(S.key)}`;
-      const res = await fetch(url,{method:'POST', headers:{'Content-Type':'application/json'}, body, signal:ctl.signal});
-      clearTimeout(t);
+      const res = await fetch(url(m),{method:'POST', headers:{'Content-Type':'application/json'}, body:make(t), signal:ctl.signal});
       const d = await res.json();
       if(res.ok) return d;
-      last = new Error(d.error?.message || ('HTTP '+res.status));
-      if(![429,500,503].includes(res.status)){ last.fatal = true; throw last; }
+      last = new Error(m + ': ' + (d.error?.message || ('HTTP '+res.status)));
     }catch(e){
-      clearTimeout(t);
-      if(e.fatal) throw e;
-      last = e.name==='AbortError' ? new Error('Javob 30 soniyada kelmadi') : e;
-    }
-    await sleep(1500*(i+1));
+      last = e.name==='AbortError' ? new Error(m + ': javob kelmadi') : e;
+    }finally{ clearInterval(tick); clearTimeout(to); }
+    await sleep(1000);
   }
   throw last;
 }
+
 
 async function ask(userText){
   busy = true; setMood('neutral');
