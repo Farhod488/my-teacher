@@ -230,6 +230,18 @@ $('avatar').onclick = () => speak(lastEnglish);
 $('send').onclick = () => send();
 $('txt').addEventListener('keydown', e => { if(e.key==='Enter') send(); });
 $('mic').onclick = toggleMic;
+  const _f = window.fetch.bind(window);
+window.fetch = async (url, opts) => {
+  const tries = [MODEL, MODEL, 'gemini-flash-latest', 'gemini-flash-latest'];
+  let res;
+  for (let i = 0; i < tries.length; i++) {
+    res = await _f(String(url).replace(MODEL, tries[i]), opts);
+    if (![429, 500, 503].includes(res.status)) return res;
+    say('Server band, qayta urinyapman… (' + (i + 1) + '/' + tries.length + ')');
+    await new Promise(r => setTimeout(r, 2000 * (i + 1)));
+  }
+  return res;
+};
 
 renderHeader();
 if(S.key && S.name){ ask('START'); }
