@@ -8,11 +8,12 @@
 <style>
   html,body{height:100%}
   body{height:100dvh}
-  @keyframes bob{to{transform:translateY(-8px) scale(1.05)}}
-  .talking{animation:bob .4s infinite alternate}
+  @keyframes blink{0%,92%,100%{transform:scaleY(1)}96%{transform:scaleY(.1)}}
+  .eye{transform-box:fill-box;transform-origin:center;animation:blink 4s infinite}
   @keyframes pulse{50%{box-shadow:0 0 0 14px rgba(244,63,94,.25)}}
   .rec{background:#f43f5e!important;animation:pulse 1.2s infinite}
-  @media (prefers-reduced-motion:reduce){.talking,.rec{animation:none}}
+  .spit{position:fixed;z-index:60;pointer-events:none;border-radius:50%;background:radial-gradient(circle at 35% 35%,#f4fff0,#b6e3a8 70%,#8fcf7d)}
+  @media (prefers-reduced-motion:reduce){.eye,.rec{animation:none}}
   button:focus-visible,input:focus-visible{outline:2px solid #fff;outline-offset:2px}
 </style>
 </head>
@@ -50,7 +51,16 @@
 
 <section class="bg-slate-900/60 p-3 flex flex-col items-center border-b border-slate-800">
   <div id="bubble" class="max-w-sm bg-slate-800 border border-slate-700 text-xs p-3 rounded-2xl text-center leading-relaxed"></div>
-  <button id="avatar" aria-label="Qayta tinglash" class="text-6xl mt-2 select-none">🪳</button>
+  <button id="avatar" aria-label="Qayta tinglash" class="mt-2 w-28 h-28">
+    <svg viewBox="0 0 200 200" class="w-full h-full">
+      <g id="body"></g>
+      <g class="eye"><circle cx="70" cy="95" r="19" fill="#fff"/><circle id="p1" cx="70" cy="95" r="8" fill="#111"/></g>
+      <g class="eye"><circle cx="130" cy="95" r="19" fill="#fff"/><circle id="p2" cx="130" cy="95" r="8" fill="#111"/></g>
+      <line id="b1" x1="48" y1="62" x2="92" y2="62" stroke="#111" stroke-width="6" stroke-linecap="round" style="transform-box:fill-box;transform-origin:center;transition:transform .3s"/>
+      <line id="b2" x1="108" y1="62" x2="152" y2="62" stroke="#111" stroke-width="6" stroke-linecap="round" style="transform-box:fill-box;transform-origin:center;transition:transform .3s"/>
+      <ellipse id="mouth" cx="100" cy="148" rx="24" ry="4" fill="#3a0d0d"/>
+    </svg>
+  </button>
   <div id="a-name" class="text-[11px] font-bold text-slate-400"></div>
 </section>
 
@@ -68,24 +78,25 @@
 <script>
 const $ = id => document.getElementById(id);
 const AVATARS = [
-  {i:'🪳', n:'Jizzaki Tarakan'}, {i:'🍅', n:'Asabiy Pomidor'}, {i:'🥟', n:'Dovyurak Somsa'}
+  {i:'🪳', n:'Jizzaki Tarakan', body:'<path d="M70 40 Q50 10 30 20 M130 40 Q150 10 170 20" stroke="#5b3a1e" stroke-width="5" fill="none" stroke-linecap="round"/><ellipse cx="100" cy="110" rx="72" ry="82" fill="#6b4423"/>'},
+  {i:'🍅', n:'Asabiy Pomidor', body:'<circle cx="100" cy="112" r="80" fill="#e53935"/><path d="M100 36 L78 12 L100 24 L122 12 Z" fill="#43a047"/>'},
+  {i:'🥟', n:'Dovyurak Somsa', body:'<path d="M100 22 C150 40 178 110 170 150 Q100 185 30 150 C22 110 50 40 100 22Z" fill="#e0a458"/>'}
 ];
 const LEVELS = ['A1 Beginner','A2 Elementary','B1 Intermediate','B2 Upper-Intermediate'];
-const MODEL = 'gemini-3.8-flash';
+const MODELS = ['gemini-3.8-flash','gemini-3.8-flash','gemini-flash-latest','gemini-flash-latest'];
+const MOODS = {neutral:[0,0,24], happy:[-10,10,32], mock:[-18,4,32], angry:[22,-22,14]};
 
 let S = Object.assign({name:'', key:'', xp:0, streak:0, last:'', av:0}, JSON.parse(localStorage.getItem('speakup2')||'{}'));
-let history = [];
-let lastEnglish = 'Hello! Let us talk.';
-let busy = false, rec = null;
+let history = [], lastEnglish = 'Hello! Let us talk.', busy = false, rec = null, mt = null;
 
 const save = () => localStorage.setItem('speakup2', JSON.stringify(S));
 const level = () => Math.min(3, Math.floor(S.xp/100));
-
+const sleep = ms => new Promise(r => setTimeout(r, ms));
 function el(tag, cls, text){ const e=document.createElement(tag); if(cls) e.className=cls; if(text!=null) e.textContent=text; return e; }
 
 function renderHeader(){
   const a = AVATARS[S.av];
-  $('h-av').textContent = a.i; $('avatar').textContent = a.i;
+  $('h-av').textContent = a.i; $('body').innerHTML = a.body;
   $('a-name').textContent = a.n + ' (ustoz)';
   $('h-user').textContent = (S.name||'Oʻquvchi') + ' · ' + LEVELS[level()];
   $('xp-bar').style.width = (S.xp%100) + '%';
@@ -93,7 +104,38 @@ function renderHeader(){
 }
 
 function say(t){ $('bubble').textContent = t; }
-function talk(on){ $('avatar').classList.toggle('talking', on); }
+function talk(on){
+  clearInterval(mt);
+  if(on) mt = setInterval(()=>$('mouth').setAttribute('ry', 3+Math.random()*16), 90);
+  else $('mouth').setAttribute('ry', 4);
+}
+function setMood(m){
+  const [a,b,w] = MOODS[m] || MOODS.neutral;
+  $('b1').style.transform = `rotate(${a}deg)`; $('b2').style.transform = `rotate(${b}deg)`;
+  $('mouth').setAttribute('rx', w);
+}
+function spit(){
+  const r = $('avatar').getBoundingClientRect();
+  const x0 = r.left + r.width/2, y0 = r.top + r.height*0.75;
+  for(let i=0;i<14;i++){
+    const s = el('div','spit'), size = 14 + Math.random()*34;
+    s.style.cssText += `width:${size}px;height:${size}px;left:${x0}px;top:${y0}px`;
+    const dx = (Math.random()-.5)*innerWidth*.8, dy = innerHeight*(.2+Math.random()*.6);
+    document.body.appendChild(s);
+    s.animate([
+      {transform:'translate(0,0) scale(.2)', opacity:1},
+      {transform:`translate(${dx}px,${dy}px) scale(1)`, opacity:1, offset:.15},
+      {transform:`translate(${dx}px,${dy+60}px) scale(1.1)`, opacity:0}
+    ], {duration:3800, easing:'ease-out'}).onfinish = () => s.remove();
+  }
+}
+document.addEventListener('pointermove', e => {
+  const r = $('avatar').getBoundingClientRect();
+  const dx = Math.max(-1, Math.min(1, (e.clientX-(r.left+r.width/2))/150));
+  const dy = Math.max(-1, Math.min(1, (e.clientY-(r.top+r.height/2))/150));
+  $('p1').setAttribute('cx', 70+dx*7); $('p2').setAttribute('cx', 130+dx*7);
+  $('p1').setAttribute('cy', 95+dy*7); $('p2').setAttribute('cy', 95+dy*7);
+});
 
 function speak(text){
   if(!('speechSynthesis' in window)) return;
@@ -126,7 +168,7 @@ function addNote(t){ $('chat').appendChild(el('div','text-center text-xs text-ro
 function scroll(){ $('chat').scrollTop = $('chat').scrollHeight; }
 
 function system(){
-  return `You are "${AVATARS[S.av].n}", a funny, slightly sarcastic but kind English speaking tutor for ${S.name||'the student'}, an Uzbek speaker.
+  return `You are "${AVATARS[S.av].n}", a funny, sarcastic but kind English speaking tutor for ${S.name||'the student'}, an Uzbek speaker.
 Student level: ${LEVELS[level()]}. Keep English simple and matched to this level.
 Messages come from speech recognition or typing: ignore capitalization and punctuation mistakes.
 Reply as JSON:
@@ -135,34 +177,55 @@ Reply as JSON:
 - explain_uz: short explanation of the mistake in Uzbek (Latin script), max 2 sentences, else "".
 - tease: one short playful Uzbek joke about the mistake (never insulting or rude), or praise if correct. Max 12 words.
 - correct: true if the student's last sentence had no real mistake.
-If the student writes START, greet them by name and ask the first easy question.`;
+- mood: "happy" if correct, "mock" for a small mistake, "angry" ONLY for a serious or repeated mistake or off-topic nonsense (dramatic, comedic anger), otherwise "neutral".
+If the student writes START, greet them by name and ask the first easy question (mood "happy").`;
+}
+
+async function callGemini(){
+  const body = JSON.stringify({
+    system_instruction:{parts:[{text:system()}]},
+    contents: history.slice(-20).map(m=>({role:m.role, parts:[{text:m.text}]})),
+    generationConfig:{
+      temperature:0.8, responseMimeType:'application/json',
+      responseSchema:{type:'OBJECT', properties:{
+        english:{type:'STRING'}, correction:{type:'STRING'}, explain_uz:{type:'STRING'},
+        tease:{type:'STRING'}, correct:{type:'BOOLEAN'}, mood:{type:'STRING'}},
+        required:['english','correction','explain_uz','tease','correct','mood']}
+    }
+  });
+  let last;
+  for(let i=0;i<MODELS.length;i++){
+    say(`Oʻylayapman… (${i+1}/${MODELS.length})`);
+    const ctl = new AbortController(), t = setTimeout(()=>ctl.abort(), 30000);
+    try{
+      const url = `https://generativelanguage.googleapis.com/v1beta/models/${MODELS[i]}:generateContent?key=${encodeURIComponent(S.key)}`;
+      const res = await fetch(url,{method:'POST', headers:{'Content-Type':'application/json'}, body, signal:ctl.signal});
+      clearTimeout(t);
+      const d = await res.json();
+      if(res.ok) return d;
+      last = new Error(d.error?.message || ('HTTP '+res.status));
+      if(![429,500,503].includes(res.status)){ last.fatal = true; throw last; }
+    }catch(e){
+      clearTimeout(t);
+      if(e.fatal) throw e;
+      last = e.name==='AbortError' ? new Error('Javob 30 soniyada kelmadi') : e;
+    }
+    await sleep(1500*(i+1));
+  }
+  throw last;
 }
 
 async function ask(userText){
-  busy = true; say('Oʻylayapman… 🤔'); talk(true);
+  busy = true; setMood('neutral');
   history.push({role:'user', text:userText});
   try{
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent?key=${encodeURIComponent(S.key)}`;
-    const res = await fetch(url,{
-      method:'POST',
-      headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({
-        system_instruction:{parts:[{text:system()}]},
-        contents: history.slice(-20).map(m=>({role:m.role, parts:[{text:m.text}]})),
-        generationConfig:{
-          temperature:0.8, responseMimeType:'application/json',
-          responseSchema:{type:'OBJECT', properties:{
-            english:{type:'STRING'}, correction:{type:'STRING'}, explain_uz:{type:'STRING'},
-            tease:{type:'STRING'}, correct:{type:'BOOLEAN'}},
-            required:['english','correction','explain_uz','tease','correct']}
-        }
-      })
-    });
-    const d = await res.json();
-    if(!res.ok) throw new Error(d.error?.message || ('HTTP '+res.status));
-    const r = JSON.parse(d.candidates[0].content.parts[0].text);
+    const d = await callGemini();
+    const txt = d.candidates?.[0]?.content?.parts?.[0]?.text;
+    if(!txt) throw new Error('Boʻsh javob: ' + JSON.stringify(d).slice(0,150));
+    const r = JSON.parse(txt);
     history.push({role:'model', text:r.english});
     lastEnglish = r.english;
+    setMood(r.mood); if(r.mood==='angry') spit();
     say(r.english); addAI(r); speak(r.english);
     if(userText!=='START') gain(r.correct?10:3);
   }catch(e){
@@ -215,33 +278,21 @@ $('btn-save').onclick = () => {
   S.name = $('in-name').value.trim(); S.key = $('in-key').value.trim();
   if(!S.name || !S.key){ alert('Ism va kalitni kiriting.'); return; }
   save(); renderHeader(); closeModal();
-  if(!history.length) ask('START');
+  if(!history.length && !busy) ask('START');
 };
 $('btn-reset').onclick = () => {
   if(!confirm('XP, streak va suhbat oʻchirilsinmi?')) return;
   S.xp=0; S.streak=0; S.last=''; save(); history=[]; $('chat').textContent=''; renderHeader();
-  if(S.key) ask('START');
+  if(S.key && !busy) ask('START');
 };
 $('btn-av').onclick = () => {
-  S.av = (S.av+1)%AVATARS.length; save(); renderHeader();
+  S.av = (S.av+1)%AVATARS.length; save(); renderHeader(); setMood('mock');
   say(`Endi men ${AVATARS[S.av].n}man!`);
 };
 $('avatar').onclick = () => speak(lastEnglish);
 $('send').onclick = () => send();
 $('txt').addEventListener('keydown', e => { if(e.key==='Enter') send(); });
 $('mic').onclick = toggleMic;
-  const _f = window.fetch.bind(window);
-window.fetch = async (url, opts) => {
-  const tries = [MODEL, MODEL, 'gemini-flash-latest', 'gemini-flash-latest'];
-  let res;
-  for (let i = 0; i < tries.length; i++) {
-    res = await _f(String(url).replace(MODEL, tries[i]), opts);
-    if (![429, 500, 503].includes(res.status)) return res;
-    say('Server band, qayta urinyapman… (' + (i + 1) + '/' + tries.length + ')');
-    await new Promise(r => setTimeout(r, 2000 * (i + 1)));
-  }
-  return res;
-};
 
 renderHeader();
 if(S.key && S.name){ ask('START'); }
